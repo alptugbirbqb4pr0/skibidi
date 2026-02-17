@@ -1,80 +1,50 @@
-from flask import Flask, request, jsonify, render_template_string
-import json
-import os
-from datetime import datetime
-from collections import defaultdict
-
-app = Flask(__name__)
-
-# Store IPs in memory (use a database for production)
-visitors = []
-
-# Simple HTML dashboard
-ADMIN_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>IP Logger Dashboard</title>
+    <title>IP Takip Paneli</title>
     <style>
-        body { font-family: Arial; margin: 20px; background: #1a1a2e; color: #fff; }
+        body { font-family: Arial; margin: 20px; background: #1a1a2e; color: white; }
         table { width: 100%; border-collapse: collapse; background: #16213e; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+        th, td { padding: 12px; border-bottom: 1px solid #333; }
         th { background: #0f3460; }
-        .ip { font-family: monospace; font-weight: bold; color: #00d4ff; }
-        .timestamp { color: #ccc; }
-        .clear { background: #ff4757; color: white; border: none; padding: 10px; cursor: pointer; }
+        .ip { font-weight: bold; color: #00d4ff; }
     </style>
 </head>
 <body>
-    <h1>🎯 IP Logger Dashboard</h1>
-    <p><strong>Total Visitors:</strong> {{ count }} | <button class="clear" onclick="clearLogs()">Clear All Logs</button></p>
-    <table>
-        <tr><th>IP</th><th>ISP</th><th>Location</th><th>UA</th><th>Time</th></tr>
-        {% for visitor in visitors %}
-        <tr>
-            <td class="ip">{{ visitor.ip }}</td>
-            <td>{{ visitor.info.org or 'N/A' }}</td>
-            <td>{{ visitor.info.city }}, {{ visitor.info.country_name }}</td>
-            <td>{{ visitor.userAgent[:50] }}...</td>
-            <td class="timestamp">{{ visitor.timestamp }}</td>
-        </tr>
-        {% endfor %}
+    <h1>🎯 Gelen IP'ler</h1>
+    <p id="toplam">Yükleniyor...</p>
+    <button onclick="temizle()" style="background:#ff4757;color:white;border:none;padding:10px;">Tümünü Sil</button>
+    <table id="tablo">
+        <tr><th>IP</th><th>Şirket</th><th>Şehir/Ülke</th><th>Tarayıcı</th><th>Zaman</th></tr>
     </table>
+    
     <script>
-        function clearLogs() {
-            fetch('/clear-logs', {method: 'POST'})
-                .then(() => location.reload());
+        function yukle() {
+            const loglar = JSON.parse(localStorage.getItem('ipLoglari') || '[]');
+            document.getElementById('toplam').innerHTML = 'Toplam: ' + loglar.length + ' kişi';
+            
+            const tablo = document.getElementById('tablo');
+            tablo.innerHTML = '<tr><th>IP</th><th>Şirket</th><th>Şehir/Ülke</th><th>Tarayıcı</th><th>Zaman</th></tr>';
+            
+            loglar.slice(-50).forEach(ipBilgi => {
+                const satir = tablo.insertRow();
+                satir.innerHTML = `
+                    <td class="ip">${ipBilgi.ip}</td>
+                    <td>${ipBilgi.info?.org || 'Bilinmiyor'}</td>
+                    <td>${ipBilgi.info?.city || ''}, ${ipBilgi.info?.country_name || ''}</td>
+                    <td>${ipBilgi.userAgent?.slice(0,30)}...</td>
+                    <td>${ipBilgi.timestamp}</td>
+                `;
+            });
         }
+        
+        function temizle() {
+            localStorage.removeItem('ipLoglari');
+            yukle();
+        }
+        
+        yukle();
+        setInterval(yukle, 3000);  // 3 saniyede bir yenile
     </script>
 </body>
 </html>
-'''
-
-@app.route('/')
-def index():
-    return app.send_static_file('index.html')
-
-@app.route('/log-ip', methods=['POST'])
-def log_ip():
-    data = request.json
-    data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    visitors.append(data)
-    # Keep only last 1000 for memory
-    if len(visitors) > 1000:
-        visitors[:] = visitors[-1000:]
-    return jsonify({'status': 'logged'})
-
-@app.route('/admin')
-def admin():
-    return render_template_string(ADMIN_TEMPLATE, visitors=visitors, count=len(visitors))
-
-@app.route('/clear-logs', methods=['POST'])
-def clear_logs():
-    global visitors
-    visitors.clear()
-    return jsonify({'status': 'cleared'})
-
-if __name__ == '__main__':
-    os.makedirs('static', exist_ok=True)
-    # Copy index.html to static folder or serve directly
-    app.run(host='0.0.0.0', port=5000, debug=True)
